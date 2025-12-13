@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">APIRESTPMO13P</string>
+    <string name="ingrese_un_tel_fono">Ingrese un teléfono</string>
+    <string name="ingrese_una_direccion">Ingrese una direccion</string>
+    <string name="ingrese_un_apellido">Ingrese un apellido</string>
+    <string name="ingrese_un_nombre">Ingrese un nombre</string>
+    <string name="tomar_foto">Tomar Foto</string>
+    <string name="agregar">Agregar</string>
+    <string name="registro">Registro</string>
+    <string name="Registro">Registro</string>
+</resources>
