@@ -5,6 +5,7 @@ import android.content.DialogInterface;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -36,15 +37,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-public class GetActivity extends AppCompatActivity {
+public class GetActivity extends AppCompatActivity implements PersonaAdapter.OnPersonaClickListener {
     RecyclerView regispersonas;
     EditText buscar;
-    Button btnvolver, btneliminar, btnactualizar;
+    Button btnvolver;
     PersonaAdapter adapter;
     ArrayList<Personas> listaPersonas;
     ArrayList<Personas> listaFiltrada;
     private RequestQueue requestQueue;
-    private int selectedPosition = -1;
 
     @SuppressLint("MissingInflatedId")
     @Override
@@ -58,8 +58,6 @@ public class GetActivity extends AppCompatActivity {
 
         buscar = (EditText) findViewById(R.id.buscar);
         btnvolver = (Button) findViewById(R.id.btnvolver);
-        btnactualizar = (Button) findViewById(R.id.btnactualizar);
-        btneliminar = (Button) findViewById(R.id.btneliminar);
         regispersonas = (RecyclerView) findViewById(R.id.registro);
 
         requestQueue = Volley.newRequestQueue(this);
@@ -70,31 +68,6 @@ public class GetActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 finish();
-            }
-        });
-        btnactualizar.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (selectedPosition != -1) {
-                    Personas persona = listaFiltrada.get(selectedPosition);
-                    actualizarPersona(persona);
-                } else {
-                    Toast.makeText(GetActivity.this,
-                            "Seleccione una persona para actualizar",
-                            Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
-        btneliminar.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (selectedPosition != -1) {
-                    confirmarEliminacion();
-                } else {
-                    Toast.makeText(GetActivity.this,
-                            "Seleccione una persona para eliminar",
-                            Toast.LENGTH_SHORT).show();
-                }
             }
         });
         buscar.addTextChangedListener(new TextWatcher() {
@@ -111,18 +84,27 @@ public class GetActivity extends AppCompatActivity {
         });
     }
     private void setupRecyclerView() {
-        adapter = new PersonaAdapter(listaFiltrada, new PersonaAdapter.OnItemClickListener() {
-            @Override
-            public void onItemClick(int position) {
-                selectedPosition = position;
-                Toast.makeText(GetActivity.this,
-                        "Seleccionado: " + listaFiltrada.get(position).getNombres(),
-                        Toast.LENGTH_SHORT).show();
-            }
-        });
-
+        adapter = new PersonaAdapter(listaFiltrada, this);
         regispersonas.setLayoutManager(new LinearLayoutManager(this));
         regispersonas.setAdapter(adapter);
+    }
+    @Override
+    public void onEditarClick(Personas persona, int position) {
+        // Abrir actividad de edición o mostrar diálogo
+        actualizarPersona(persona);
+    }
+    @Override
+    public void onEliminarClick(Personas persona, int position) {
+        // Confirmar eliminación
+        confirmarEliminacion(persona, position);
+    }
+    @Override
+    public void onItemClick(Personas persona, int position) {
+        // Aquí puedes manejar el clic en el item si quieres
+        // Por ejemplo, mostrar detalles completos
+        Toast.makeText(this,
+                "Clic en: " + persona.getNombres(),
+                Toast.LENGTH_SHORT).show();
     }
     private void cargarPersonas() {
         String url = ResetApiMethods.EndPointGet;
@@ -159,7 +141,11 @@ public class GetActivity extends AppCompatActivity {
                                 persona.setTelefono(jsonObject.getString("telefono"));
 
                                 if (jsonObject.has("foto")) {
-                                    persona.setFoto(jsonObject.getString("foto"));
+                                    String fotoBase64 = jsonObject.getString("foto");
+                                    if (fotoBase64 != null && !fotoBase64.isEmpty() &&
+                                            !fotoBase64.equals("null")) {
+                                        persona.setFoto(fotoBase64);
+                                    }
                                 }
 
                                 listaPersonas.add(persona);
@@ -170,7 +156,7 @@ public class GetActivity extends AppCompatActivity {
                             adapter.notifyDataSetChanged();
 
                             Toast.makeText(GetActivity.this,
-                                    "Datos cargados: " + listaPersonas.size() + " registros",
+                                    "✓ " + listaPersonas.size() + " personas cargadas",
                                     Toast.LENGTH_SHORT).show();
 
                         } catch (JSONException e) {
@@ -203,19 +189,15 @@ public class GetActivity extends AppCompatActivity {
 
         requestQueue.add(jsonArrayRequest);
     }
-    private void eliminarPersona(String idPersona) {
+    private void eliminarPersona(String idPersona, int position) {
         String url = ResetApiMethods.EndPointDelete;
 
-        System.out.println("Eliminando persona con ID: " + idPersona);
-        System.out.println("URL DELETE: " + url);
-
-        try {JSONObject jsonBody = new JSONObject();
+        try {
+            JSONObject jsonBody = new JSONObject();
             jsonBody.put("id", idPersona);
 
-            System.out.println("JSON Body: " + jsonBody.toString());
-
             JsonObjectRequest request = new JsonObjectRequest(
-                    Request.Method.POST,  // Cambiar a POST si tu PHP espera POST
+                    Request.Method.POST,
                     url,
                     jsonBody,
                     new Response.Listener<JSONObject>() {
@@ -227,16 +209,19 @@ public class GetActivity extends AppCompatActivity {
                                         "✓ " + mensaje,
                                         Toast.LENGTH_SHORT).show();
 
-                                System.out.println("Respuesta DELETE: " + response.toString());
-
-                                cargarPersonas();
-                                selectedPosition = -1;
+                                if (adapter != null && position != -1) {
+                                    // Eliminar de ambas listas
+                                    if (position < listaPersonas.size()) {
+                                        listaPersonas.remove(position);
+                                    }
+                                    if (position < listaFiltrada.size()) {
+                                        listaFiltrada.remove(position);
+                                    }
+                                    adapter.notifyItemRemoved(position);
+                                }
 
                             } catch (JSONException e) {
                                 e.printStackTrace();
-                                Toast.makeText(GetActivity.this,
-                                        "Error parseando respuesta: " + e.getMessage(),
-                                        Toast.LENGTH_SHORT).show();
                             }
                         }
                     },
@@ -244,19 +229,9 @@ public class GetActivity extends AppCompatActivity {
                         @Override
                         public void onErrorResponse(VolleyError error) {
                             error.printStackTrace();
-
-                            // Obtener mensaje de error detallado
-                            String errorMsg = "Error en el servidor";
-                            if (error.networkResponse != null) {
-                                int statusCode = error.networkResponse.statusCode;
-                                String data = new String(error.networkResponse.data);
-                                errorMsg = "Código: " + statusCode + " - " + data;
-                                System.out.println("Error DELETE: " + errorMsg);
-                            }
-
                             Toast.makeText(GetActivity.this,
-                                    errorMsg,
-                                    Toast.LENGTH_LONG).show();
+                                    "Error eliminando",
+                                    Toast.LENGTH_SHORT).show();
                         }
                     }
             ) {
@@ -264,48 +239,28 @@ public class GetActivity extends AppCompatActivity {
                 public Map<String, String> getHeaders() {
                     Map<String, String> headers = new HashMap<>();
                     headers.put("Content-Type", "application/json");
-                    headers.put("Accept", "application/json");
                     return headers;
                 }
-
-                @Override
-                public String getBodyContentType() {
-                    return "application/json; charset=utf-8";
-                }
             };
-            request.setRetryPolicy(new com.android.volley.DefaultRetryPolicy(
-                    10000, // 10 segundos
-                    com.android.volley.DefaultRetryPolicy.DEFAULT_MAX_RETRIES,
-                    com.android.volley.DefaultRetryPolicy.DEFAULT_BACKOFF_MULT
-            ));
 
             requestQueue.add(request);
 
         } catch (JSONException e) {
             e.printStackTrace();
-            Toast.makeText(GetActivity.this,
-                    "Error creando JSON: " + e.getMessage(),
-                    Toast.LENGTH_SHORT).show();
         }
     }
-    private void confirmarEliminacion() {
-        if (selectedPosition < 0 || selectedPosition >= listaFiltrada.size()) {
-            Toast.makeText(this, "Selección inválida", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        Personas persona = listaFiltrada.get(selectedPosition);
-
+    private void confirmarEliminacion(final Personas persona, final int position) {
         new AlertDialog.Builder(this)
                 .setTitle("Confirmar eliminación")
-                .setMessage("¿Está seguro de eliminar a " + persona.getNombres() + " " + persona.getApellidos() + "?")
-                .setPositiveButton("Sí", new DialogInterface.OnClickListener() {
+                .setMessage("¿Está seguro de eliminar a " +
+                        persona.getNombres() + " " + persona.getApellidos() + "?")
+                .setPositiveButton("Sí, eliminar", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        eliminarPersona(persona.getId());
+                        eliminarPersona(persona.getId(), position);
                     }
                 })
-                .setNegativeButton("No", null)
+                .setNegativeButton("Cancelar", null)
                 .show();
     }
     private void actualizarPersona(@NonNull Personas persona) {
@@ -334,16 +289,18 @@ public class GetActivity extends AppCompatActivity {
                 String nuevaDireccion = etDireccion.getText().toString().trim();
                 String nuevoTelefono = etTelefono.getText().toString().trim();
 
+                // Validar campos
                 if (nuevosNombres.isEmpty() || nuevosApellidos.isEmpty()) {
                     Toast.makeText(GetActivity.this,
                             "Nombre y apellido son obligatorios",
                             Toast.LENGTH_SHORT).show();
                     return;
                 }
+
                 try {
                     int id = Integer.parseInt(persona.getId());
                     ejecutarActualizacion(id, nuevosNombres, nuevosApellidos,
-                            nuevaDireccion, nuevoTelefono);
+                            nuevaDireccion, nuevoTelefono, persona);
                 } catch (NumberFormatException e) {
                     Toast.makeText(GetActivity.this,
                             "Error: ID inválido",
@@ -357,9 +314,8 @@ public class GetActivity extends AppCompatActivity {
     }
 
     private void ejecutarActualizacion(int id, String nombres, String apellidos,
-                                       String direccion, String telefono) {
+                                       String direccion, String telefono, Personas personaOriginal) {
         String url = ResetApiMethods.EndPointUpdate;
-        System.out.println("URL UPDATE: " + url);
 
         try {
             JSONObject jsonObject = new JSONObject();
@@ -369,7 +325,7 @@ public class GetActivity extends AppCompatActivity {
             jsonObject.put("direccion", direccion);
             jsonObject.put("telefono", telefono);
 
-            System.out.println("JSON a enviar: " + jsonObject.toString());
+            Log.d("API_UPDATE", "Actualizando persona: " + jsonObject.toString());
 
             JsonObjectRequest request = new JsonObjectRequest(
                     Request.Method.PUT,
@@ -380,11 +336,21 @@ public class GetActivity extends AppCompatActivity {
                         public void onResponse(JSONObject response) {
                             try {
                                 String mensaje = response.getString("message");
-                                Toast.makeText(GetActivity.this, mensaje, Toast.LENGTH_SHORT).show();
+                                Toast.makeText(GetActivity.this,
+                                        "✓ " + mensaje,
+                                        Toast.LENGTH_SHORT).show();
 
-                                // Recargar lista
-                                cargarPersonas();
-                                selectedPosition = -1;
+                                // Actualizar datos locales
+                                personaOriginal.setNombres(nombres);
+                                personaOriginal.setApellidos(apellidos);
+                                personaOriginal.setDireccion(direccion);
+                                personaOriginal.setTelefono(telefono);
+
+                                // Notificar al adaptador
+                                int position = listaFiltrada.indexOf(personaOriginal);
+                                if (position != -1) {
+                                    adapter.notifyItemChanged(position);
+                                }
 
                             } catch (JSONException e) {
                                 e.printStackTrace();
@@ -395,8 +361,12 @@ public class GetActivity extends AppCompatActivity {
                         @Override
                         public void onErrorResponse(VolleyError error) {
                             error.printStackTrace();
+                            String errorMsg = "Error actualizando";
+                            if (error.networkResponse != null && error.networkResponse.data != null) {
+                                errorMsg = new String(error.networkResponse.data);
+                            }
                             Toast.makeText(GetActivity.this,
-                                    "Error actualizando: " + error.getMessage(),
+                                    "✗ " + errorMsg,
                                     Toast.LENGTH_SHORT).show();
                         }
                     }
@@ -405,23 +375,26 @@ public class GetActivity extends AppCompatActivity {
                 public Map<String, String> getHeaders() {
                     Map<String, String> headers = new HashMap<>();
                     headers.put("Content-Type", "application/json");
+                    headers.put("Accept", "application/json");
                     return headers;
                 }
+
                 @Override
                 public String getBodyContentType() {
                     return "application/json; charset=utf-8";
                 }
             };
 
+            // Agregar timeout
             request.setRetryPolicy(new com.android.volley.DefaultRetryPolicy(
                     10000,
                     com.android.volley.DefaultRetryPolicy.DEFAULT_MAX_RETRIES,
                     com.android.volley.DefaultRetryPolicy.DEFAULT_BACKOFF_MULT
             ));
+
             requestQueue.add(request);
 
-        }
-        catch (JSONException e) {
+        } catch (JSONException e) {
             e.printStackTrace();
             Toast.makeText(GetActivity.this,
                     "Error creando JSON: " + e.getMessage(),
@@ -433,6 +406,7 @@ public class GetActivity extends AppCompatActivity {
         if (listaPersonas == null || listaFiltrada == null) {
             return;
         }
+
         listaFiltrada.clear();
 
         if (texto.isEmpty()) {
@@ -449,12 +423,12 @@ public class GetActivity extends AppCompatActivity {
         }
 
         adapter.notifyDataSetChanged();
-        selectedPosition = -1;
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        // Recargar datos al volver a la actividad
         if (requestQueue != null) {
             cargarPersonas();
         }
